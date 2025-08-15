@@ -187,6 +187,11 @@ button[type="submit"]::before {
   text-transform: uppercase;
   position: relative;
   transition: all 0.2s ease;
+  z-index: 10;
+  pointer-events: all;
+  user-select: none;
+  text-decoration: none;
+  display: inline-block;
 }
 
 .tab-btn:hover {
@@ -264,9 +269,12 @@ button[type="submit"]::before {
 }
 
 .news-link {
-  color: #87ceeb;
-  text-decoration: none;
-  font-size: 0.85rem;
+  color: #00aaff;
+  text-decoration: underline;
+  font-size: 0.95rem;
+  font-weight: bold;
+  display: block;
+  margin-top: 8px;
 }
 
 .news-link:hover {
@@ -275,8 +283,9 @@ button[type="submit"]::before {
 }
 
 .news-link::before {
-  content: "[LINK] ";
-  color: #888888;
+  content: "→ ";
+  color: #00aaff;
+  font-weight: bold;
 }
 
 .news-actions {

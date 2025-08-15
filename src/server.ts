@@ -31,11 +31,19 @@ function generateNewsHtml(newsItems: any[]): string {
     return '<div class="no-news">No news items yet. Be the first to post!</div>';
   }
 
-  return newsItems.map(item => `
+  return newsItems.map(item => {
+    let domain = '';
+    try {
+      domain = new URL(item.link).hostname.replace('www.', '');
+    } catch (e) {
+      domain = 'link';
+    }
+    
+    return `
     <div class="news-item" id="news-${item.id}">
       <div class="news-content">
         <p class="news-summary">${escapeHtml(item.summary)}</p>
-        <a href="${escapeHtml(item.link)}" target="_blank" rel="noopener" class="news-link">Read more →</a>
+        <a href="${escapeHtml(item.link)}" target="_blank" rel="noopener" class="news-link">Read on ${domain}</a>
       </div>
       <div class="news-actions">
         <button 
@@ -57,7 +65,8 @@ function generateNewsHtml(newsItems: any[]): string {
         </button>
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function escapeHtml(unsafe: string): string {
@@ -71,7 +80,7 @@ function escapeHtml(unsafe: string): string {
 
 app.get('/', async (req: Request, res: Response) => {
   try {
-    const sort = req.query.sort as 'top' | 'new' | 'classic' || 'classic';
+    const sort = req.query.sort as 'top' | 'new' | 'classic' || 'top';
     const newsItems = await db.getNewsItemsBySort(sort);
     const newsHtml = generateNewsHtml(newsItems);
   
@@ -111,9 +120,9 @@ app.get('/', async (req: Request, res: Response) => {
 
         <section class="news-section">
             <div class="tab-navigation">
-                <button class="tab-btn ${sort === 'classic' ? 'active' : ''}" hx-get="/news-feed?sort=classic" hx-target="#news-list" hx-swap="innerHTML">Classic</button>
-                <button class="tab-btn ${sort === 'top' ? 'active' : ''}" hx-get="/news-feed?sort=top" hx-target="#news-list" hx-swap="innerHTML">Top</button>
-                <button class="tab-btn ${sort === 'new' ? 'active' : ''}" hx-get="/news-feed?sort=new" hx-target="#news-list" hx-swap="innerHTML">New</button>
+                <a href="/?sort=top" class="tab-btn ${sort === 'top' ? 'active' : ''}">Top</a>
+                <a href="/?sort=new" class="tab-btn ${sort === 'new' ? 'active' : ''}">New</a>
+                <a href="/?sort=classic" class="tab-btn ${sort === 'classic' ? 'active' : ''}">Classic</a>
             </div>
             <h2>Latest News</h2>
             <div id="news-list" class="news-list">
@@ -182,7 +191,7 @@ app.post('/vote', async (req: Request, res: Response) => {
 
 app.get('/news-feed', async (req: Request, res: Response) => {
   try {
-    const sort = req.query.sort as 'top' | 'new' | 'classic' || 'classic';
+    const sort = req.query.sort as 'top' | 'new' | 'classic' || 'top';
     const newsItems = await db.getNewsItemsBySort(sort);
     const newsHtml = generateNewsHtml(newsItems);
     res.send(newsHtml);

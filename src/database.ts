@@ -89,9 +89,10 @@ class DatabaseManager {
       
       switch (sortType) {
         case 'top':
-          // Best voted items of all time
+          // Most voted items from today
           query = `
             SELECT * FROM news_items 
+            WHERE date(created_at) = date('now')
             ORDER BY vote_score DESC, created_at DESC
           `;
           break;
@@ -105,13 +106,10 @@ class DatabaseManager {
           break;
           
         case 'classic':
-          // Hot algorithm: score with time decay (like HackerNews/Reddit)
+          // Best voted items of all time
           query = `
-            SELECT *, 
-              (vote_score - 1) / POWER((julianday('now') - julianday(created_at)) * 24 + 2, 1.8) as hot_score
-            FROM news_items 
-            WHERE julianday('now') - julianday(created_at) <= 7
-            ORDER BY hot_score DESC, created_at DESC
+            SELECT * FROM news_items 
+            ORDER BY vote_score DESC, created_at DESC
           `;
           break;
           
