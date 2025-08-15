@@ -180,7 +180,7 @@ class DatabaseManager {
         await this.pgClient.query(`
           ALTER TABLE votes ADD COLUMN vote_source TEXT NOT NULL DEFAULT 'human';
           ALTER TABLE votes ADD CONSTRAINT votes_vote_source_check CHECK(vote_source IN ('human', 'machine'));
-          DROP INDEX IF EXISTS votes_news_item_id_voter_ip_key;
+          ALTER TABLE votes DROP CONSTRAINT IF EXISTS votes_news_item_id_voter_ip_key;
           CREATE UNIQUE INDEX votes_unique_idx ON votes(news_item_id, voter_ip, vote_source);
         `);
         console.log('✅ PostgreSQL votes table migration completed');
