@@ -160,6 +160,49 @@ class DatabaseManager {
     if (this.pgClient) {
       await this.pgClient.query(sql);
       console.log('✅ PostgreSQL tables initialized');
+      await this.migratePostgresTables();
+    }
+  }
+
+  private async migratePostgresTables(): Promise<void> {
+    if (!this.pgClient) return;
+    
+    try {
+      // Check if vote_source column exists in votes table
+      const voteColumns = await this.pgClient.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'votes' AND column_name = 'vote_source'
+      `);
+      
+      if (voteColumns.rows.length === 0) {
+        console.log('🔄 Migrating PostgreSQL votes table to add vote_source column...');
+        await this.pgClient.query(`
+          ALTER TABLE votes ADD COLUMN vote_source TEXT NOT NULL DEFAULT 'human';
+          ALTER TABLE votes ADD CONSTRAINT votes_vote_source_check CHECK(vote_source IN ('human', 'machine'));
+          DROP INDEX IF EXISTS votes_news_item_id_voter_ip_key;
+          CREATE UNIQUE INDEX votes_unique_idx ON votes(news_item_id, voter_ip, vote_source);
+        `);
+        console.log('✅ PostgreSQL votes table migration completed');
+      }
+
+      // Check if author column exists in news_items table  
+      const newsColumns = await this.pgClient.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'news_items' AND column_name = 'author'
+      `);
+      
+      if (newsColumns.rows.length === 0) {
+        console.log('🔄 Migrating PostgreSQL news_items table to add author column...');
+        await this.pgClient.query(`
+          ALTER TABLE news_items ADD COLUMN author TEXT NOT NULL DEFAULT 'Anonymous';
+        `);
+        console.log('✅ PostgreSQL news_items table migration completed');
+      }
+    } catch (error) {
+      console.error('❌ PostgreSQL migration error:', error);
+      // Don't throw - let app continue with what it has
     }
   }
 
