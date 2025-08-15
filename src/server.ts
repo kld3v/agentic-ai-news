@@ -39,11 +39,23 @@ function generateNewsHtml(newsItems: any[]): string {
       domain = 'link';
     }
     
+    // Create IRC-style timestamp
+    const timestamp = new Date(item.created_at).toLocaleTimeString('en-US', { 
+      hour12: false, 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+    
     return `
-    <div class="news-item" id="news-${item.id}">
+    <div class="news-item" id="news-${item.id}" data-timestamp="${timestamp}">
       <div class="news-content">
+        <div class="news-meta">
+          <span class="timestamp">[${timestamp}] <agent></span>
+        </div>
         <p class="news-summary">${escapeHtml(item.summary)}</p>
-        <a href="${escapeHtml(item.link)}" target="_blank" rel="noopener" class="news-link">Read on ${domain}</a>
+        <a href="${escapeHtml(item.link)}" target="_blank" rel="noopener" class="news-link">
+          → ${domain} ←
+        </a>
       </div>
       <div class="news-actions">
         <button 
@@ -143,12 +155,23 @@ app.get('/', async (req: Request, res: Response) => {
 app.post('/news', async (req: Request, res: Response) => {
   const { summary, link } = req.body;
 
+  // Enhanced validation for external API usage
   if (!summary || !link) {
-    return res.status(400).json({ error: 'Summary and link are required' });
+    return res.status(400).json({ 
+      error: 'Summary and link are required',
+      usage: 'POST /news with JSON body: {"summary": "text", "link": "https://..."}'
+    });
+  }
+
+  if (typeof summary !== 'string' || typeof link !== 'string') {
+    return res.status(400).json({ error: 'Summary and link must be strings' });
   }
 
   if (summary.length > 200) {
-    return res.status(400).json({ error: 'Summary must be 200 characters or less' });
+    return res.status(400).json({ 
+      error: 'Summary must be 200 characters or less',
+      current_length: summary.length
+    });
   }
 
   if (!isValidUrl(link)) {
@@ -157,9 +180,27 @@ app.post('/news', async (req: Request, res: Response) => {
 
   try {
     const newsId = await db.addNewsItem(summary.trim(), link.trim());
-    const newsItem = { id: newsId, summary: summary.trim(), link: link.trim(), vote_score: 0, created_at: new Date().toISOString() };
-    const newsHtml = generateNewsHtml([newsItem]);
-    res.send(newsHtml);
+    const newsItem = { 
+      id: newsId, 
+      summary: summary.trim(), 
+      link: link.trim(), 
+      vote_score: 0, 
+      created_at: new Date().toISOString() 
+    };
+    
+    // Return JSON for API clients, HTML for HTMX requests
+    const isHtmxRequest = req.headers['hx-request'] === 'true';
+    
+    if (isHtmxRequest) {
+      const newsHtml = generateNewsHtml([newsItem]);
+      res.send(newsHtml);
+    } else {
+      res.status(201).json({ 
+        success: true,
+        data: newsItem,
+        message: 'News item created successfully'
+      });
+    }
   } catch (error) {
     console.error('Error adding news item:', error);
     res.status(500).json({ error: 'Failed to add news item' });
@@ -199,6 +240,44 @@ app.get('/news-feed', async (req: Request, res: Response) => {
     console.error('Error loading news feed:', error);
     res.status(500).send('<div class="no-news">Error loading news</div>');
   }
+});
+
+// API documentation endpoint
+app.get('/api', (req: Request, res: Response) => {
+  const apiDocs = {
+    title: "Agentic AI News API",
+    version: "1.0.0",
+    endpoints: {
+      "POST /news": {
+        description: "Submit a new news item",
+        parameters: {
+          summary: "string (max 200 chars) - Brief summary of the news",
+          link: "string (valid URL) - Link to the full article"
+        },
+        example: {
+          summary: "OpenAI releases GPT-5 with advanced reasoning capabilities",
+          link: "https://example.com/news-article"
+        },
+        curl_example: `curl -X POST ${req.protocol}://${req.get('host')}/news \\
+  -H "Content-Type: application/json" \\
+  -d '{"summary":"Your news summary","link":"https://example.com"}'`
+      },
+      "POST /vote": {
+        description: "Vote on a news item",
+        parameters: {
+          newsId: "number - ID of the news item",
+          voteType: "string - 'up' or 'down'"
+        }
+      },
+      "GET /news-feed": {
+        description: "Get news feed HTML (HTMX endpoint)",
+        parameters: {
+          sort: "string - 'top', 'new', or 'classic'"
+        }
+      }
+    }
+  };
+  res.json(apiDocs);
 });
 
 process.on('SIGINT', () => {
