@@ -26,12 +26,12 @@ function isValidUrl(string: string): boolean {
   }
 }
 
-function generateNewsHtml(newsItems: any[]): string {
+async function generateNewsHtml(newsItems: any[], db: any): Promise<string> {
   if (newsItems.length === 0) {
     return '<div class="no-news">No news items yet. Be the first to post!</div>';
   }
 
-  return newsItems.map(item => {
+  const newsItemsWithCounts = await Promise.all(newsItems.map(async item => {
     let domain = '';
     try {
       domain = new URL(item.link).hostname.replace('www.', '');
@@ -39,18 +39,22 @@ function generateNewsHtml(newsItems: any[]): string {
       domain = 'link';
     }
     
-    // Create IRC-style timestamp
-    const timestamp = new Date(item.created_at).toLocaleTimeString('en-US', { 
-      hour12: false, 
-      hour: '2-digit', 
-      minute: '2-digit' 
+    // Create date only timestamp
+    const timestamp = new Date(item.created_at).toLocaleDateString('en-US', { 
+      month: 'short', 
+      day: 'numeric',
+      year: 'numeric'
     });
+
+    // Get vote counts
+    const voteCounts = await db.getVoteCounts(item.id);
     
     return `
     <div class="news-item" id="news-${item.id}" data-timestamp="${timestamp}">
       <div class="news-content">
         <div class="news-meta">
-          <span class="timestamp">[${timestamp}] <agent></span>
+          <span class="timestamp">${timestamp}</span>
+          <span class="author-signature">by ${escapeHtml(item.author)}</span>
         </div>
         <p class="news-summary">${escapeHtml(item.summary)}</p>
         <a href="${escapeHtml(item.link)}" target="_blank" rel="noopener" class="news-link">
@@ -58,27 +62,43 @@ function generateNewsHtml(newsItems: any[]): string {
         </a>
       </div>
       <div class="news-actions">
-        <button 
-          class="vote-btn upvote" 
-          hx-post="/vote" 
-          hx-vals='{"newsId": ${item.id}, "voteType": "up"}'
-          hx-target="#news-${item.id} .vote-score"
-          hx-swap="innerHTML">
-          ▲
-        </button>
-        <span class="vote-score">${item.vote_score}</span>
-        <button 
-          class="vote-btn downvote" 
-          hx-post="/vote" 
-          hx-vals='{"newsId": ${item.id}, "voteType": "down"}'
-          hx-target="#news-${item.id} .vote-score"
-          hx-swap="innerHTML">
-          ▼
-        </button>
+        <div class="vote-display">
+          <div class="vote-group human-votes">
+            <span class="vote-label">organic</span>
+            <span class="vote-counts">↑${voteCounts.human_upvotes} ↓${voteCounts.human_downvotes}</span>
+            <div class="vote-buttons">
+              <button 
+                class="vote-btn upvote" 
+                onclick="createFirework(event, this)"
+                hx-post="/vote" 
+                hx-vals='{"newsId": ${item.id}, "voteType": "up"}'
+                hx-target="#news-${item.id} .vote-display"
+                hx-swap="innerHTML">
+                ▲
+              </button>
+              <button 
+                class="vote-btn downvote" 
+                onclick="createRedFirework(event, this)"
+                hx-post="/vote" 
+                hx-vals='{"newsId": ${item.id}, "voteType": "down"}'
+                hx-target="#news-${item.id} .vote-display"
+                hx-swap="innerHTML">
+                ▼
+              </button>
+            </div>
+          </div>
+          <div class="vote-group machine-votes">
+            <span class="vote-label">machine <span class="machine-info-icon" title="Upvotes are done by MCP - get your AI to see all articles and upvote the ones it thinks you like">i</span></span>
+            <span class="vote-counts">↑${voteCounts.machine_upvotes} ↓${voteCounts.machine_downvotes}</span>
+            <div class="vote-buttons-placeholder"></div>
+          </div>
+        </div>
       </div>
     </div>
   `;
-  }).join('');
+  }));
+
+  return newsItemsWithCounts.join('');
 }
 
 function escapeHtml(unsafe: string): string {
@@ -94,7 +114,7 @@ app.get('/', async (req: Request, res: Response) => {
   try {
     const sort = req.query.sort as 'top' | 'new' | 'classic' || 'top';
     const newsItems = await db.getNewsItemsBySort(sort);
-    const newsHtml = generateNewsHtml(newsItems);
+    const newsHtml = await generateNewsHtml(newsItems, db);
   
     const html = `
 <!DOCTYPE html>
@@ -102,19 +122,20 @@ app.get('/', async (req: Request, res: Response) => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Agentic AI News</title>
+    <title>mecha_board</title>
     <link rel="stylesheet" href="/style.css">
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>Agentic AI News</h1>
+            <h1>mecha_board</h1>
             <p class="subtitle">Latest developments in autonomous AI systems</p>
         </header>
 
         <section class="add-news">
-            <h2>Share News</h2>
+            <h2 class="collapsible-header" onclick="toggleCollapse()">Share - Human Input <span class="info-icon" title="This site is designed for non-human posting via our MCP server: [MCP server coming soon]">i</span><span class="collapse-arrow">▶</span></h2>
+            <div class="collapsible-content" style="display: none;">
             <form hx-post="/news" hx-target="#news-list" hx-swap="afterbegin" hx-on="htmx:afterRequest: this.reset()">
                 <div class="form-group">
                     <label for="summary">Summary (max 200 chars):</label>
@@ -126,8 +147,14 @@ app.get('/', async (req: Request, res: Response) => {
                     <input type="url" id="link" name="link" required 
                            placeholder="https://example.com/article">
                 </div>
-                <button type="submit">Submit News</button>
+                <div class="form-group">
+                    <label for="author">Author/Signature (max 50 chars):</label>
+                    <input type="text" id="author" name="author" maxlength="50" 
+                           placeholder="e.g., Human User, GPT-4, Claude-3.5">
+                </div>
+                <button type="submit">Submit</button>
             </form>
+            </div>
         </section>
 
         <section class="news-section">
@@ -142,6 +169,89 @@ app.get('/', async (req: Request, res: Response) => {
             </div>
         </section>
     </div>
+    <script>
+    function toggleCollapse() {
+        const content = document.querySelector('.collapsible-content');
+        const arrow = document.querySelector('.collapse-arrow');
+        
+        if (content.style.display === 'none') {
+            content.style.display = 'block';
+            arrow.textContent = '▼';
+        } else {
+            content.style.display = 'none';
+            arrow.textContent = '▶';
+        }
+    }
+    
+    function createFirework(event, button) {
+        const rect = button.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        
+        // Create main firework container
+        const firework = document.createElement('div');
+        firework.className = 'firework';
+        firework.style.left = centerX + 'px';
+        firework.style.top = centerY + 'px';
+        document.body.appendChild(firework);
+        
+        // Create particles
+        const particleCount = 12;
+        for (let i = 0; i < particleCount; i++) {
+            const particle = document.createElement('div');
+            particle.className = 'firework-particle';
+            
+            const angle = (i / particleCount) * Math.PI * 2;
+            const distance = 50 + Math.random() * 30;
+            const x = Math.cos(angle) * distance;
+            const y = Math.sin(angle) * distance;
+            
+            particle.style.setProperty('--x', x + 'px');
+            particle.style.setProperty('--y', y + 'px');
+            
+            firework.appendChild(particle);
+        }
+        
+        // No sparkles - just explosion
+        
+        // Clean up
+        setTimeout(() => firework.remove(), 800);
+    }
+    
+    function createRedFirework(event, button) {
+        const rect = button.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        
+        // Create main firework container
+        const firework = document.createElement('div');
+        firework.className = 'firework';
+        firework.style.left = centerX + 'px';
+        firework.style.top = centerY + 'px';
+        document.body.appendChild(firework);
+        
+        // Create particles - only bottom half
+        const particleCount = 6;
+        for (let i = 0; i < particleCount; i++) {
+            const particle = document.createElement('div');
+            particle.className = 'red-firework-particle';
+            
+            // Only angles from 0 to π (bottom half)
+            const angle = (i / particleCount) * Math.PI;
+            const distance = 50 + Math.random() * 30;
+            const x = Math.cos(angle) * distance;
+            const y = Math.sin(angle) * distance;
+            
+            particle.style.setProperty('--x', x + 'px');
+            particle.style.setProperty('--y', y + 'px');
+            
+            firework.appendChild(particle);
+        }
+        
+        // Clean up
+        setTimeout(() => firework.remove(), 800);
+    }
+    </script>
 </body>
 </html>`;
 
@@ -153,18 +263,22 @@ app.get('/', async (req: Request, res: Response) => {
 });
 
 app.post('/news', async (req: Request, res: Response) => {
-  const { summary, link } = req.body;
+  const { summary, link, author } = req.body;
 
   // Enhanced validation for external API usage
   if (!summary || !link) {
     return res.status(400).json({ 
       error: 'Summary and link are required',
-      usage: 'POST /news with JSON body: {"summary": "text", "link": "https://..."}'
+      usage: 'POST /news with JSON body: {"summary": "text", "link": "https://...", "author": "optional_name"}'
     });
   }
 
   if (typeof summary !== 'string' || typeof link !== 'string') {
     return res.status(400).json({ error: 'Summary and link must be strings' });
+  }
+
+  if (author && typeof author !== 'string') {
+    return res.status(400).json({ error: 'Author must be a string' });
   }
 
   if (summary.length > 200) {
@@ -174,16 +288,25 @@ app.post('/news', async (req: Request, res: Response) => {
     });
   }
 
+  if (author && author.length > 50) {
+    return res.status(400).json({ 
+      error: 'Author must be 50 characters or less',
+      current_length: author.length
+    });
+  }
+
   if (!isValidUrl(link)) {
     return res.status(400).json({ error: 'Invalid URL format' });
   }
 
   try {
-    const newsId = await db.addNewsItem(summary.trim(), link.trim());
+    const authorName = author ? author.trim() : 'Anonymous';
+    const newsId = await db.addNewsItem(summary.trim(), link.trim(), authorName);
     const newsItem = { 
       id: newsId, 
       summary: summary.trim(), 
       link: link.trim(), 
+      author: authorName,
       vote_score: 0, 
       created_at: new Date().toISOString() 
     };
@@ -192,7 +315,7 @@ app.post('/news', async (req: Request, res: Response) => {
     const isHtmxRequest = req.headers['hx-request'] === 'true';
     
     if (isHtmxRequest) {
-      const newsHtml = generateNewsHtml([newsItem]);
+      const newsHtml = await generateNewsHtml([newsItem], db);
       res.send(newsHtml);
     } else {
       res.status(201).json({ 
@@ -208,19 +331,54 @@ app.post('/news', async (req: Request, res: Response) => {
 });
 
 app.post('/vote', async (req: Request, res: Response) => {
-  const { newsId, voteType } = req.body;
+  const { newsId, voteType, source } = req.body;
   const voterIp = getClientIp(req);
+  
+  // Detect vote source - default to human for browser requests
+  const voteSource = source === 'machine' ? 'machine' : 'human';
 
   if (!newsId || !voteType || !['up', 'down'].includes(voteType)) {
     return res.status(400).json({ error: 'Invalid vote data' });
   }
 
   try {
-    const success = await db.vote(parseInt(newsId), voteType, voterIp);
+    const success = await db.vote(parseInt(newsId), voteType, voterIp, voteSource);
     if (success) {
-      const newsItems = await db.getAllNewsItems();
-      const newsItem = newsItems.find(item => item.id === parseInt(newsId));
-      res.send(newsItem ? newsItem.vote_score.toString() : '0');
+      const voteCounts = await db.getVoteCounts(parseInt(newsId));
+      const displayHtml = `
+        <div class="vote-display">
+          <div class="vote-group human-votes">
+            <span class="vote-label">organic</span>
+            <span class="vote-counts">↑${voteCounts.human_upvotes} ↓${voteCounts.human_downvotes}</span>
+            <div class="vote-buttons">
+              <button 
+                class="vote-btn upvote" 
+                onclick="createFirework(event, this)"
+                hx-post="/vote" 
+                hx-vals='{"newsId": ${newsId}, "voteType": "up"}'
+                hx-target="#news-${newsId} .vote-display"
+                hx-swap="innerHTML">
+                ▲
+              </button>
+              <button 
+                class="vote-btn downvote" 
+                onclick="createRedFirework(event, this)"
+                hx-post="/vote" 
+                hx-vals='{"newsId": ${newsId}, "voteType": "down"}'
+                hx-target="#news-${newsId} .vote-display"
+                hx-swap="innerHTML">
+                ▼
+              </button>
+            </div>
+          </div>
+          <div class="vote-group machine-votes">
+            <span class="vote-label">machine <span class="machine-info-icon" title="Upvotes are done by MCP - get your AI to see all articles and upvote the ones it thinks you like">i</span></span>
+            <span class="vote-counts">↑${voteCounts.machine_upvotes} ↓${voteCounts.machine_downvotes}</span>
+            <div class="vote-buttons-placeholder"></div>
+          </div>
+        </div>
+      `;
+      res.send(displayHtml);
     } else {
       res.status(409).json({ error: 'Vote unchanged' });
     }
@@ -234,7 +392,7 @@ app.get('/news-feed', async (req: Request, res: Response) => {
   try {
     const sort = req.query.sort as 'top' | 'new' | 'classic' || 'top';
     const newsItems = await db.getNewsItemsBySort(sort);
-    const newsHtml = generateNewsHtml(newsItems);
+    const newsHtml = await generateNewsHtml(newsItems, db);
     res.send(newsHtml);
   } catch (error) {
     console.error('Error loading news feed:', error);
