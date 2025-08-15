@@ -71,7 +71,8 @@ function escapeHtml(unsafe: string): string {
 
 app.get('/', async (req: Request, res: Response) => {
   try {
-    const newsItems = await db.getAllNewsItems();
+    const sort = req.query.sort as 'top' | 'new' | 'classic' || 'classic';
+    const newsItems = await db.getNewsItemsBySort(sort);
     const newsHtml = generateNewsHtml(newsItems);
   
     const html = `
@@ -109,6 +110,11 @@ app.get('/', async (req: Request, res: Response) => {
         </section>
 
         <section class="news-section">
+            <div class="tab-navigation">
+                <button class="tab-btn ${sort === 'classic' ? 'active' : ''}" hx-get="/news-feed?sort=classic" hx-target="#news-list" hx-swap="innerHTML">Classic</button>
+                <button class="tab-btn ${sort === 'top' ? 'active' : ''}" hx-get="/news-feed?sort=top" hx-target="#news-list" hx-swap="innerHTML">Top</button>
+                <button class="tab-btn ${sort === 'new' ? 'active' : ''}" hx-get="/news-feed?sort=new" hx-target="#news-list" hx-swap="innerHTML">New</button>
+            </div>
             <h2>Latest News</h2>
             <div id="news-list" class="news-list">
                 ${newsHtml}
@@ -171,6 +177,18 @@ app.post('/vote', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error voting:', error);
     res.status(500).json({ error: 'Failed to record vote' });
+  }
+});
+
+app.get('/news-feed', async (req: Request, res: Response) => {
+  try {
+    const sort = req.query.sort as 'top' | 'new' | 'classic' || 'classic';
+    const newsItems = await db.getNewsItemsBySort(sort);
+    const newsHtml = generateNewsHtml(newsItems);
+    res.send(newsHtml);
+  } catch (error) {
+    console.error('Error loading news feed:', error);
+    res.status(500).send('<div class="no-news">Error loading news</div>');
   }
 });
 

@@ -83,6 +83,55 @@ class DatabaseManager {
     });
   }
 
+  getNewsItemsBySort(sortType: 'top' | 'new' | 'classic'): Promise<NewsItem[]> {
+    return new Promise((resolve, reject) => {
+      let query = '';
+      
+      switch (sortType) {
+        case 'top':
+          // Best voted items of all time
+          query = `
+            SELECT * FROM news_items 
+            ORDER BY vote_score DESC, created_at DESC
+          `;
+          break;
+          
+        case 'new':
+          // Most recent items first
+          query = `
+            SELECT * FROM news_items 
+            ORDER BY created_at DESC
+          `;
+          break;
+          
+        case 'classic':
+          // Hot algorithm: score with time decay (like HackerNews/Reddit)
+          query = `
+            SELECT *, 
+              (vote_score - 1) / POWER((julianday('now') - julianday(created_at)) * 24 + 2, 1.8) as hot_score
+            FROM news_items 
+            WHERE julianday('now') - julianday(created_at) <= 7
+            ORDER BY hot_score DESC, created_at DESC
+          `;
+          break;
+          
+        default:
+          query = `
+            SELECT * FROM news_items 
+            ORDER BY vote_score DESC, created_at DESC
+          `;
+      }
+      
+      this.db.all(query, (err, rows) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(rows as NewsItem[]);
+        }
+      });
+    });
+  }
+
   vote(newsItemId: number, voteType: 'up' | 'down', voterIp: string): Promise<boolean> {
     return new Promise((resolve, reject) => {
       this.db.serialize(() => {
