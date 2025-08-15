@@ -7,9 +7,8 @@
 body {
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Courier New', monospace;
   line-height: 1.6;
-  color: #c0c0c0;
+  color: #ffffff;
   background: #000000;
-  overflow-x: auto;
 }
 
 .container {
@@ -22,25 +21,6 @@ header {
   text-align: center;
   margin-bottom: 40px;
   padding: 20px;
-  border: 1px solid #333333;
-  background: #111111;
-  position: relative;
-}
-
-header::before {
-  content: "╔══════════════════════════════════════════╗";
-  display: block;
-  color: #667eea;
-  font-size: 0.8rem;
-  margin-bottom: 10px;
-}
-
-header::after {
-  content: "╚══════════════════════════════════════════╝";
-  display: block;
-  color: #667eea;
-  font-size: 0.8rem;
-  margin-top: 10px;
 }
 
 header h1 {
@@ -51,60 +31,23 @@ header h1 {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  font-family: inherit;
-}
-
-header h1::before {
-  content: ">> ";
-  background: #667eea;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-header h1::after {
-  content: " <<";
-  background: #764ba2;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
 }
 
 .subtitle {
   font-size: 0.95rem;
   color: #888888;
-  font-style: italic;
-}
-
-.subtitle::before {
-  content: "// ";
-  color: #555555;
 }
 
 .add-news {
-  background: #111111;
   padding: 30px;
-  border-radius: 12px;
-  border: 1px solid #333333;
   margin-bottom: 40px;
-  position: relative;
-}
-
-.add-news::before {
-  content: "[+] SUBMIT_NEWS";
-  display: block;
-  color: #667eea;
-  font-size: 0.9rem;
-  margin-bottom: 20px;
-  border-bottom: 1px dashed #333333;
-  padding-bottom: 5px;
+  border: 1px solid #333333;
 }
 
 .add-news h2 {
   font-size: 1.2rem;
   margin-bottom: 15px;
-  color: #e6e6e6;
-  display: none;
+  color: #ffffff;
 }
 
 .form-group {
@@ -114,125 +57,77 @@ header h1::after {
 label {
   display: block;
   margin-bottom: 8px;
-  color: #c0c0c0;
+  color: #ffffff;
   font-size: 0.9rem;
-  font-weight: normal;
-}
-
-label::before {
-  content: "$ ";
-  color: #667eea;
 }
 
 input[type="text"],
 input[type="url"] {
   width: 100%;
   padding: 12px 16px;
-  border: 1px solid #333333;
+  border: none;
+  border-bottom: 1px solid #333333;
   background-color: #000000;
   color: #ffffff;
   font-family: inherit;
   font-size: 1rem;
-  border-radius: 8px;
-  transition: all 0.2s ease;
+  transition: all 0.3s ease;
 }
 
 input[type="text"]:focus,
 input[type="url"]:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-bottom-color: #667eea;
 }
 
 button[type="submit"] {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  color: #ffffff;
   padding: 12px 24px;
   border: none;
-  border-radius: 8px;
   font-family: inherit;
   cursor: pointer;
   font-size: 1rem;
-  font-weight: 600;
-  transition: all 0.2s ease;
   margin-top: 10px;
+  transition: all 0.3s ease;
 }
 
 button[type="submit"]:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
 }
 
 .news-section {
-  background: #111111;
   padding: 30px;
-  border-radius: 12px;
   border: 1px solid #333333;
-}
-
-.news-section::before {
-  content: "[*] ACTIVE_FEEDS";
-  display: block;
-  color: #667eea;
-  font-size: 0.9rem;
-  margin-bottom: 25px;
-  border-bottom: 1px dashed #333333;
-  padding-bottom: 5px;
 }
 
 .tab-navigation {
   margin-bottom: 30px;
   display: flex;
-  gap: 2px;
-  border-bottom: 1px solid #333333;
+  gap: 20px;
 }
 
 .tab-btn {
-  background: #111111;
+  background: none;
   color: #888888;
-  border: 1px solid #333333;
-  border-bottom: none;
-  padding: 8px 16px;
+  border: none;
+  padding: 8px 0;
   font-family: inherit;
   font-size: 0.9rem;
-  font-weight: normal;
   cursor: pointer;
-  transition: all 0.2s ease;
   text-decoration: none;
   display: inline-block;
-  text-transform: uppercase;
-}
-
-.tab-btn::before {
-  content: "[";
-  color: #555555;
-}
-
-.tab-btn::after {
-  content: "]";
-  color: #555555;
+  transition: all 0.3s ease;
 }
 
 .tab-btn:hover {
-  color: #c0c0c0;
-  background: #222222;
-}
-
-.tab-btn:hover::before,
-.tab-btn:hover::after {
-  color: #667eea;
+  color: #ffffff;
 }
 
 .tab-btn.active {
   color: #ffffff;
-  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
-  border-bottom: 1px solid rgba(102, 126, 234, 0.1);
-  margin-bottom: -1px;
-}
-
-.tab-btn.active::before,
-.tab-btn.active::after {
-  color: #667eea;
+  border-bottom: 2px solid;
+  border-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) 1;
 }
 
 .news-section h2 {
@@ -242,7 +137,7 @@ button[type="submit"]:hover {
 .news-list {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 0;
 }
 
 .news-item {
@@ -250,36 +145,23 @@ button[type="submit"]:hover {
   justify-content: space-between;
   align-items: flex-start;
   padding: 15px;
-  background: #111111;
   border: 1px solid #333333;
-  border-left: 3px solid #667eea;
-  position: relative;
-  transition: all 0.2s ease;
-}
-
-.news-item::before {
-  content: ">> ";
-  color: #667eea;
-  position: absolute;
-  left: 8px;
-  top: 15px;
-  font-size: 0.8rem;
+  border-left: 3px solid;
+  border-left-color: transparent;
+  border-image: linear-gradient(180deg, #667eea 0%, #764ba2 100%) 1;
+  border-image-slice: 1;
+  border-image-width: 0 0 0 3px;
+  margin-bottom: 10px;
+  transition: all 0.3s ease;
 }
 
 .news-item:hover {
-  border-left-color: #764ba2;
-  background: #1a1a1a;
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
-}
-
-.news-item:hover::before {
-  color: #764ba2;
+  opacity: 0.8;
 }
 
 .news-content {
   flex: 1;
   margin-right: 20px;
-  margin-left: 15px;
 }
 
 .news-meta {
@@ -288,8 +170,10 @@ button[type="submit"]:hover {
 
 .timestamp {
   font-size: 0.8rem;
-  color: #667eea;
-  font-family: inherit;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .news-summary {
@@ -297,22 +181,25 @@ button[type="submit"]:hover {
   margin-bottom: 10px;
   color: #ffffff;
   line-height: 1.5;
-  font-weight: 400;
 }
 
 .news-link {
-  color: #667eea;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
   text-decoration: none;
   font-size: 0.9rem;
-  font-weight: 500;
   display: block;
   margin-top: 8px;
-  transition: all 0.2s ease;
-  font-family: inherit;
+  transition: all 0.3s ease;
 }
 
 .news-link:hover {
-  color: #764ba2;
+  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
   text-decoration: underline;
 }
 
@@ -324,11 +211,10 @@ button[type="submit"]:hover {
 }
 
 .vote-btn {
-  background: #111111;
-  border: 1px solid #333333;
+  background: none;
+  border: none;
   width: 36px;
   height: 36px;
-  border-radius: 6px;
   cursor: pointer;
   font-size: 16px;
   color: #888888;
@@ -336,22 +222,11 @@ button[type="submit"]:hover {
   align-items: center;
   justify-content: center;
   font-family: inherit;
-  transition: all 0.2s ease;
+  transition: all 0.3s ease;
 }
 
 .vote-btn:hover {
-  border-color: #667eea;
-  color: #667eea;
-}
-
-.vote-btn.upvote:hover {
-  background: rgba(102, 126, 234, 0.1);
-  color: #667eea;
-}
-
-.vote-btn.downvote:hover {
-  background: rgba(118, 75, 162, 0.1);
-  color: #764ba2;
+  color: #ffffff;
 }
 
 .vote-score {
@@ -360,18 +235,6 @@ button[type="submit"]:hover {
   color: #ffffff;
   min-width: 30px;
   text-align: center;
-  font-family: inherit;
-  position: relative;
-}
-
-.vote-score::before {
-  content: "[";
-  color: #555555;
-}
-
-.vote-score::after {
-  content: "]";
-  color: #555555;
 }
 
 .no-news {
@@ -379,7 +242,6 @@ button[type="submit"]:hover {
   padding: 40px;
   color: #888888;
   font-size: 1rem;
-  font-weight: 400;
 }
 
 @media (max-width: 768px) {
@@ -391,14 +253,6 @@ button[type="submit"]:hover {
     font-size: 1.5rem;
   }
 
-  header::before {
-    content: "┌─────────────────────────┐";
-  }
-
-  header::after {
-    content: "└─────────────────────────┘";
-  }
-
   .news-item {
     flex-direction: column;
     align-items: flex-start;
@@ -407,7 +261,6 @@ button[type="submit"]:hover {
 
   .news-content {
     margin-right: 0;
-    margin-left: 15px;
   }
 
   .news-actions {
