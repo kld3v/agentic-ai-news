@@ -1,14 +1,52 @@
 import express, { Request, Response } from 'express';
 import path from 'path';
 import DatabaseManager from './database';
+import TelemetrySystem, { 
+  logger, 
+  metrics, 
+  tracing,
+  requestIdMiddleware,
+  loggingMiddleware,
+  tracingMiddleware,
+  metricsMiddleware,
+  errorHandlingMiddleware,
+  performanceMiddleware,
+  securityMiddleware,
+  auditMiddleware,
+  rateLimitMiddleware,
+  healthCheckMiddleware
+} from './telemetry';
+import { debugMiddleware } from './telemetry/debugger';
+
+TelemetrySystem.initialize();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const db = new DatabaseManager();
 
+app.use(healthCheckMiddleware);
+app.use(requestIdMiddleware);
+app.use(loggingMiddleware);
+app.use(tracingMiddleware);
+app.use(metricsMiddleware);
+app.use(performanceMiddleware);
+app.use(securityMiddleware);
+app.use(rateLimitMiddleware(60000, 100));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, '../public')));
+// Serve node_modules with proper MIME types
+app.use('/node_modules', express.static(path.join(__dirname, '../node_modules'), {
+  setHeaders: (res, path) => {
+    if (path.endsWith('.js')) {
+      res.setHeader('Content-Type', 'application/javascript');
+    }
+  }
+}));
+
+app.use(auditMiddleware);
+app.use(debugMiddleware);
 
 function getClientIp(req: Request): string {
   return (req.headers['x-forwarded-for'] as string)?.split(',')[0] || 
@@ -65,32 +103,33 @@ async function generateNewsHtml(newsItems: any[], db: any): Promise<string> {
         <div class="vote-display">
           <div class="vote-group human-votes">
             <span class="vote-label">organic</span>
-            <span class="vote-counts">↑${voteCounts.human_upvotes} ↓${voteCounts.human_downvotes}</span>
-            <div class="vote-buttons">
+            <span class="vote-counts-inline">
               <button 
-                class="vote-btn upvote" 
+                class="vote-btn-inline upvote" 
                 onclick="createFirework(event, this)"
                 hx-post="/vote" 
                 hx-vals='{"newsId": ${item.id}, "voteType": "up"}'
                 hx-target="#news-${item.id} .vote-display"
                 hx-swap="innerHTML">
                 ▲
-              </button>
+              </button>${voteCounts.human_upvotes} 
               <button 
-                class="vote-btn downvote" 
+                class="vote-btn-inline downvote" 
                 onclick="createRedFirework(event, this)"
                 hx-post="/vote" 
                 hx-vals='{"newsId": ${item.id}, "voteType": "down"}'
                 hx-target="#news-${item.id} .vote-display"
                 hx-swap="innerHTML">
                 ▼
-              </button>
-            </div>
+              </button>${voteCounts.human_downvotes}
+            </span>
           </div>
           <div class="vote-group machine-votes">
             <span class="vote-label">machine <span class="machine-info-icon" title="Upvotes are done by MCP - get your AI to see all articles and upvote the ones it thinks you like">i</span></span>
-            <span class="vote-counts">↑${voteCounts.machine_upvotes} ↓${voteCounts.machine_downvotes}</span>
-            <div class="vote-buttons-placeholder"></div>
+            <span class="vote-counts-inline">
+              <span class="vote-arrow-static">▲</span>${voteCounts.machine_upvotes} 
+              <span class="vote-arrow-static">▼</span>${voteCounts.machine_downvotes}
+            </span>
           </div>
         </div>
       </div>
@@ -111,7 +150,8 @@ function escapeHtml(unsafe: string): string {
 }
 
 app.get('/', async (req: Request, res: Response) => {
-  try {
+  return tracing.traceAsync('handle_homepage', async () => {
+    try {
     const sort = req.query.sort as 'top' | 'new' | 'classic' || 'top';
     const newsItems = await db.getNewsItemsBySort(sort);
     const newsHtml = await generateNewsHtml(newsItems, db);
@@ -251,19 +291,24 @@ app.get('/', async (req: Request, res: Response) => {
         // Clean up
         setTimeout(() => firework.remove(), 800);
     }
+
     </script>
 </body>
 </html>`;
 
-    res.send(html);
-  } catch (error) {
-    console.error('Error loading homepage:', error);
-    res.status(500).send('Internal server error');
-  }
+      res.send(html);
+    } catch (error) {
+      logger.error('Error loading homepage', error);
+      throw error;
+    }
+  });
 });
 
 app.post('/news', async (req: Request, res: Response) => {
-  const { summary, link, author } = req.body;
+  return tracing.traceAsync('handle_create_news', async () => {
+    const { summary, link, author } = req.body;
+    
+    logger.info('Creating news item', { summary, link, author });
 
   // Enhanced validation for external API usage
   if (!summary || !link) {
@@ -299,9 +344,12 @@ app.post('/news', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Invalid URL format' });
   }
 
-  try {
-    const authorName = author ? author.trim() : 'Anonymous';
-    const newsId = await db.addNewsItem(summary.trim(), link.trim(), authorName);
+    try {
+      const authorName = author ? author.trim() : 'Anonymous';
+      const newsId = await db.addNewsItem(summary.trim(), link.trim(), authorName);
+      
+      metrics.recordNewsItem('api', authorName === 'Anonymous' ? 'anonymous' : 'named');
+      logger.info('News item created', { newsId, summary, link, author: authorName });
     const newsItem = { 
       id: newsId, 
       summary: summary.trim(), 
@@ -323,15 +371,17 @@ app.post('/news', async (req: Request, res: Response) => {
         data: newsItem,
         message: 'News item created successfully'
       });
+      }
+    } catch (error) {
+      logger.error('Error adding news item', error);
+      throw error;
     }
-  } catch (error) {
-    console.error('Error adding news item:', error);
-    res.status(500).json({ error: 'Failed to add news item' });
-  }
+  });
 });
 
 app.post('/vote', async (req: Request, res: Response) => {
-  const { newsId, voteType, source } = req.body;
+  return tracing.traceAsync('handle_vote', async () => {
+    const { newsId, voteType, source } = req.body;
   const voterIp = getClientIp(req);
   
   // Detect vote source - default to human for browser requests
@@ -341,51 +391,58 @@ app.post('/vote', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Invalid vote data' });
   }
 
-  try {
-    const success = await db.vote(parseInt(newsId), voteType, voterIp, voteSource);
+    try {
+      const success = await db.vote(parseInt(newsId), voteType, voterIp, voteSource);
+      
+      if (success) {
+        metrics.recordVote(voteType, voteSource);
+        logger.info('Vote recorded', { newsId, voteType, voteSource, voterIp });
+      }
     if (success) {
       const voteCounts = await db.getVoteCounts(parseInt(newsId));
       const displayHtml = `
         <div class="vote-display">
           <div class="vote-group human-votes">
             <span class="vote-label">organic</span>
-            <span class="vote-counts">↑${voteCounts.human_upvotes} ↓${voteCounts.human_downvotes}</span>
-            <div class="vote-buttons">
+            <span class="vote-counts-inline">
               <button 
-                class="vote-btn upvote" 
+                class="vote-btn-inline upvote" 
                 onclick="createFirework(event, this)"
                 hx-post="/vote" 
                 hx-vals='{"newsId": ${newsId}, "voteType": "up"}'
                 hx-target="#news-${newsId} .vote-display"
                 hx-swap="innerHTML">
                 ▲
-              </button>
+              </button>${voteCounts.human_upvotes} 
               <button 
-                class="vote-btn downvote" 
+                class="vote-btn-inline downvote" 
                 onclick="createRedFirework(event, this)"
                 hx-post="/vote" 
                 hx-vals='{"newsId": ${newsId}, "voteType": "down"}'
                 hx-target="#news-${newsId} .vote-display"
                 hx-swap="innerHTML">
                 ▼
-              </button>
-            </div>
+              </button>${voteCounts.human_downvotes}
+            </span>
           </div>
           <div class="vote-group machine-votes">
             <span class="vote-label">machine <span class="machine-info-icon" title="Upvotes are done by MCP - get your AI to see all articles and upvote the ones it thinks you like">i</span></span>
-            <span class="vote-counts">↑${voteCounts.machine_upvotes} ↓${voteCounts.machine_downvotes}</span>
-            <div class="vote-buttons-placeholder"></div>
+            <span class="vote-counts-inline">
+              <span class="vote-arrow-static">▲</span>${voteCounts.machine_upvotes} 
+              <span class="vote-arrow-static">▼</span>${voteCounts.machine_downvotes}
+            </span>
           </div>
         </div>
       `;
       res.send(displayHtml);
     } else {
       res.status(409).json({ error: 'Vote unchanged' });
+      }
+    } catch (error) {
+      logger.error('Error voting', error);
+      throw error;
     }
-  } catch (error) {
-    console.error('Error voting:', error);
-    res.status(500).json({ error: 'Failed to record vote' });
-  }
+  });
 });
 
 app.get('/news-feed', async (req: Request, res: Response) => {
@@ -395,7 +452,7 @@ app.get('/news-feed', async (req: Request, res: Response) => {
     const newsHtml = await generateNewsHtml(newsItems, db);
     res.send(newsHtml);
   } catch (error) {
-    console.error('Error loading news feed:', error);
+    logger.error('Error loading news feed', error);
     res.status(500).send('<div class="no-news">Error loading news</div>');
   }
 });
@@ -438,20 +495,26 @@ app.get('/api', (req: Request, res: Response) => {
   res.json(apiDocs);
 });
 
-process.on('SIGINT', () => {
-  console.log('\\nShutting down gracefully...');
-  db.close();
+process.on('SIGINT', async () => {
+  logger.info('Shutting down gracefully...');
+  await db.close();
   process.exit(0);
 });
 
-process.on('SIGTERM', () => {
-  console.log('\\nShutting down gracefully...');
-  db.close();
+process.on('SIGTERM', async () => {
+  logger.info('Shutting down gracefully...');
+  await db.close();
   process.exit(0);
 });
+
+app.use(errorHandlingMiddleware);
 
 app.listen(PORT, () => {
-  console.log(`🚀 Agentic AI News server running on http://localhost:${PORT}`);
+  logger.info(`🚀 Agentic AI News server running on http://localhost:${PORT}`, {
+    port: PORT,
+    environment: process.env.NODE_ENV || 'development',
+    pid: process.pid
+  });
 });
 
 export default app;

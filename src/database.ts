@@ -1,6 +1,7 @@
 import sqlite3 from 'sqlite3';
 import { Client } from 'pg';
 import path from 'path';
+import { logger, DatabaseLogger } from './telemetry';
 
 export interface NewsItem {
   id: number;
@@ -49,11 +50,17 @@ class DatabaseManager {
     try {
       if (this.pgClient) {
         await this.pgClient.connect();
-        console.log('✅ Connected to PostgreSQL database');
+        logger.info('✅ Connected to PostgreSQL database');
+        DatabaseLogger.logConnectionPool({
+          active: 1,
+          idle: 0,
+          total: 1,
+          dbType: 'postgresql'
+        });
         await this.initializePostgresTables();
       }
     } catch (error) {
-      console.error('❌ Failed to connect to PostgreSQL:', error);
+      logger.error('❌ Failed to connect to PostgreSQL', error);
       process.exit(1);
     }
   }
@@ -96,14 +103,16 @@ class DatabaseManager {
           if (!err) {
             const hasVoteSource = columns.some(col => col.name === 'vote_source');
             if (!hasVoteSource) {
-              console.log('🔄 Migrating votes table to add vote_source column...');
+              logger.info('🔄 Migrating votes table to add vote_source column...');
+              DatabaseLogger.logMigration('add_vote_source_column', 'started');
               this.db!.exec(`
                 ALTER TABLE votes ADD COLUMN vote_source TEXT NOT NULL DEFAULT 'human' CHECK(vote_source IN ('human', 'machine'));
                 
                 -- Drop old unique constraint and create new one
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_votes_unique ON votes(news_item_id, voter_ip, vote_source);
               `);
-              console.log('✅ Votes table migration completed');
+              logger.info('✅ Votes table migration completed');
+              DatabaseLogger.logMigration('add_vote_source_column', 'completed');
             }
           }
         });
@@ -119,11 +128,13 @@ class DatabaseManager {
           if (!err) {
             const hasAuthor = columns.some(col => col.name === 'author');
             if (!hasAuthor) {
-              console.log('🔄 Migrating news_items table to add author column...');
+              logger.info('🔄 Migrating news_items table to add author column...');
+              DatabaseLogger.logMigration('add_author_column', 'started');
               this.db!.exec(`
                 ALTER TABLE news_items ADD COLUMN author TEXT NOT NULL DEFAULT 'Anonymous';
               `);
-              console.log('✅ News items table migration completed');
+              logger.info('✅ News items table migration completed');
+              DatabaseLogger.logMigration('add_author_column', 'completed');
             }
           }
         });
@@ -159,7 +170,7 @@ class DatabaseManager {
     
     if (this.pgClient) {
       await this.pgClient.query(sql);
-      console.log('✅ PostgreSQL tables initialized');
+      logger.info('✅ PostgreSQL tables initialized');
       await this.migratePostgresTables();
     }
   }
@@ -176,14 +187,16 @@ class DatabaseManager {
       `);
       
       if (voteColumns.rows.length === 0) {
-        console.log('🔄 Migrating PostgreSQL votes table to add vote_source column...');
+        logger.info('🔄 Migrating PostgreSQL votes table to add vote_source column...');
+        DatabaseLogger.logMigration('pg_add_vote_source', 'started');
         await this.pgClient.query(`
           ALTER TABLE votes ADD COLUMN vote_source TEXT NOT NULL DEFAULT 'human';
           ALTER TABLE votes ADD CONSTRAINT votes_vote_source_check CHECK(vote_source IN ('human', 'machine'));
           ALTER TABLE votes DROP CONSTRAINT IF EXISTS votes_news_item_id_voter_ip_key;
           CREATE UNIQUE INDEX votes_unique_idx ON votes(news_item_id, voter_ip, vote_source);
         `);
-        console.log('✅ PostgreSQL votes table migration completed');
+        logger.info('✅ PostgreSQL votes table migration completed');
+        DatabaseLogger.logMigration('pg_add_vote_source', 'completed');
       }
 
       // Check if author column exists in news_items table  
@@ -194,25 +207,35 @@ class DatabaseManager {
       `);
       
       if (newsColumns.rows.length === 0) {
-        console.log('🔄 Migrating PostgreSQL news_items table to add author column...');
+        logger.info('🔄 Migrating PostgreSQL news_items table to add author column...');
+        DatabaseLogger.logMigration('pg_add_author', 'started');
         await this.pgClient.query(`
           ALTER TABLE news_items ADD COLUMN author TEXT NOT NULL DEFAULT 'Anonymous';
         `);
-        console.log('✅ PostgreSQL news_items table migration completed');
+        logger.info('✅ PostgreSQL news_items table migration completed');
+        DatabaseLogger.logMigration('pg_add_author', 'completed');
       }
     } catch (error) {
-      console.error('❌ PostgreSQL migration error:', error);
+      logger.error('❌ PostgreSQL migration error', error);
+      DatabaseLogger.logMigration('pg_migration', 'failed', error);
       // Don't throw - let app continue with what it has
     }
   }
 
   async addNewsItem(summary: string, link: string, author: string = 'Anonymous'): Promise<number> {
     if (this.isPostgres && this.pgClient) {
-      const result = await this.pgClient.query(
+      return DatabaseLogger.traceQuery(
+        'insert',
         'INSERT INTO news_items (summary, link, author) VALUES ($1, $2, $3) RETURNING id',
-        [summary, link, author]
+        async () => {
+          const result = await this.pgClient!.query(
+            'INSERT INTO news_items (summary, link, author) VALUES ($1, $2, $3) RETURNING id',
+            [summary, link, author]
+          );
+          return result.rows[0].id;
+        },
+        { table: 'news_items', dbType: 'postgresql', params: [summary, link, author] }
       );
-      return result.rows[0].id;
     } else {
       return new Promise((resolve, reject) => {
         const stmt = this.db!.prepare(`
@@ -233,10 +256,17 @@ class DatabaseManager {
 
   async getAllNewsItems(): Promise<NewsItem[]> {
     if (this.isPostgres && this.pgClient) {
-      const result = await this.pgClient.query(
-        'SELECT * FROM news_items ORDER BY vote_score DESC, created_at DESC'
+      return DatabaseLogger.traceQuery(
+        'select',
+        'SELECT * FROM news_items ORDER BY vote_score DESC, created_at DESC',
+        async () => {
+          const result = await this.pgClient!.query(
+            'SELECT * FROM news_items ORDER BY vote_score DESC, created_at DESC'
+          );
+          return result.rows;
+        },
+        { table: 'news_items', dbType: 'postgresql' }
       );
-      return result.rows;
     } else {
       return new Promise((resolve, reject) => {
         this.db!.all(`
@@ -285,8 +315,15 @@ class DatabaseManager {
       }
       
       if (this.pgClient) {
-        const result = await this.pgClient.query(query);
-        return result.rows;
+        return DatabaseLogger.traceQuery(
+          'select',
+          query,
+          async () => {
+            const result = await this.pgClient!.query(query);
+            return result.rows;
+          },
+          { table: 'news_items', dbType: 'postgresql' }
+        );
       }
     } else {
       switch (sortType) {
@@ -528,11 +565,13 @@ class DatabaseManager {
     }
   }
 
-  close(): void {
+  async close(): Promise<void> {
     if (this.isPostgres && this.pgClient) {
-      this.pgClient.end();
+      await this.pgClient.end();
+      logger.info('PostgreSQL connection closed');
     } else if (this.db) {
       this.db.close();
+      logger.info('SQLite connection closed');
     }
   }
 }
